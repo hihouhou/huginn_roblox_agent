@@ -11,6 +11,8 @@ module Agents
 
       `debug` is used for verbose mode.
 
+      `details` is used to have conversation's content.
+
       `userid` is the id of the user.
 
       `cookie` is mendatory for auth endpoints.
@@ -44,24 +46,38 @@ module Agents
     def default_options
       {
         'userid' => '',
+        'conversationid' => '',
+        'message' => '',
         'cookie' => '',
         'type' => 'check_friends',
         'debug' => 'false',
+        'details' => 'false',
         'emit_events' => 'true',
         'expected_receive_period_in_days' => '2',
       }
     end
 
     form_configurable :userid, type: :string
+    form_configurable :conversationid, type: :string
+    form_configurable :message, type: :string
     form_configurable :cookie, type: :string
+    form_configurable :details, type: :boolean
     form_configurable :debug, type: :boolean
     form_configurable :emit_events, type: :boolean
     form_configurable :expected_receive_period_in_days, type: :string
-    form_configurable :type, type: :array, values: ['check_friends', 'check_conversations']
+    form_configurable :type, type: :array, values: ['check_friends', 'check_conversations', 'send_message']
     def validate_options
-      errors.add(:base, "type has invalid value: should be 'check_friends', 'check_conversations'") if interpolated['type'].present? && !%w(check_friends check_conversations).include?(interpolated['type'])
+      errors.add(:base, "type has invalid value: should be 'check_friends', 'check_conversations', 'send_message'") if interpolated['type'].present? && !%w(check_friends check_conversations send_message).include?(interpolated['type'])
 
-      unless options['userid'].present?
+      unless options['message'].present? || !['send_message'].include?(options['type'])
+        errors.add(:base, "message is a required field")
+      end
+
+      unless options['conversationid'].present? || !['send_message'].include?(options['type'])
+        errors.add(:base, "conversationid is a required field")
+      end
+
+      unless options['userid'].present? || !['send_message' 'check_friends'].include?(options['type'])
         errors.add(:base, "userid is a required field")
       end
 
@@ -71,6 +87,10 @@ module Agents
 
       if options.has_key?('emit_events') && boolify(options['emit_events']).nil?
         errors.add(:base, "if provided, emit_events must be true or false")
+      end
+
+      if options.has_key?('details') && boolify(options['details']).nil?
+        errors.add(:base, "if provided, details must be true or false")
       end
 
       if options.has_key?('debug') && boolify(options['debug']).nil?
@@ -122,14 +142,9 @@ module Agents
         http.request(req)
       end
 
-
-      if interpolated['debug'] == 'true'
-        log "response.body"
-        log response.body
-      end
+      log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
-
       return payload
 
     end
@@ -143,10 +158,7 @@ module Agents
         http.request(req)
       end
 
-      if interpolated['debug'] == 'true'
-        log "response.body"
-        log response.body
-      end
+      log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
       return payload
@@ -202,8 +214,8 @@ module Agents
       end  
     end
 
-    def check_conversations()
-      uri = URI("https://chat.roblox.com/v2/get-user-conversations?pageNumber=1&pageSize=1")
+    def get_conversations(id)
+      uri = URI("https://chat.roblox.com/v2/get-messages?conversationId=#{id}&pageSize=100")
       req = Net::HTTP::Get.new(uri)
       req['Cookie'] = ".ROBLOSECURITY=#{interpolated['cookie']}"
       
@@ -211,14 +223,34 @@ module Agents
         http.request(req)
       end
 
-      if interpolated['debug'] == 'true'
-        log "response.body"
-        log response.body
+      log_curl_output(response.code,response.body)
+
+      return response.body
+
+    end
+
+    def check_conversations()
+      uri = URI("https://chat.roblox.com/v2/get-user-conversations?pageNumber=1&pageSize=10")
+      req = Net::HTTP::Get.new(uri)
+      req['Cookie'] = ".ROBLOSECURITY=#{interpolated['cookie']}"
+
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
+        http.request(req)
       end
+
+      log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
       if !memory['conversations']
         payload.each do |conversation|
+          if interpolated['details'] == 'true'
+            conversation['details_content'] = []
+            JSON.parse(get_conversations(conversation['id'])).each do |line|
+              userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
+              newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
+              conversation['details_content'] << newline
+            end
+          end
           if interpolated['emit_events'] == 'true'
             create_event payload: conversation
           end
@@ -233,7 +265,7 @@ module Agents
             log conversation
           end
           last_status.each do |conversationbis|
-            if conversation['id'] == conversationbis['id']
+            if conversation['id'] == conversationbis['id'] && conversation['lastUpdated'] == conversationbis['lastUpdated']
               found = true
             end
             if interpolated['debug'] == 'true'
@@ -243,11 +275,55 @@ module Agents
             end
           end
           if found == false
+            if interpolated['details'] == 'true'
+              conversation['details_content'] = []
+              date1 = last_status.find { |conversationter| conversationter["id"] == conversation['id'] }
+              date1 = DateTime.parse(date1['lastUpdated'])
+              JSON.parse(get_conversations(conversation['id'])).each do |line|
+                date2 = DateTime.parse(line['sent'])
+                userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
+                newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
+                if date1 < date2
+                  conversation['details_content'] << newline
+                end
+              end
+            end
             create_event payload: conversation
           end
         end
         memory['conversations'] = payload
       end  
+    end
+
+    def send_message()
+      uri = URI.parse("https://chat.roblox.com/v2/send-message")
+      request = Net::HTTP::Post.new(uri)
+      request.content_type = "application/json"
+      request["Accept"] = "application/json"
+      request.body = JSON.dump({
+        "message" => interpolated['message'],
+        "isExperienceInvite" => true,
+        "userId" => interpolated['userid'],
+        "conversationId" => interpolated['conversationid'],
+        "decorators" => [
+          "string"
+        ]
+      })
+
+      req_options = {
+        use_ssl: uri.scheme == "https",
+      }
+
+      response = Net::HTTP.start(uri.hostname, uri.port, req_options) do |http|
+        http.request(request)
+      end
+
+      log_curl_output(response.code,response.body)
+
+      if interpolated['emit_events'] == 'true'
+        create_event payload: response.body
+      end
+
     end
 
     def trigger_action
@@ -257,6 +333,8 @@ module Agents
         check_friends()
       when "check_conversations"
         check_conversations()
+      when "send_message"
+        send_message()
       else
         log "Error: type has an invalid value (#{interpolated['type']})"
       end
