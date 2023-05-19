@@ -278,13 +278,16 @@ module Agents
             if interpolated['details'] == 'true'
               conversation['details_content'] = []
               date1 = last_status.find { |conversationter| conversationter["id"] == conversation['id'] }
-              date1 = DateTime.parse(date1['lastUpdated'])
-              JSON.parse(get_conversations(conversation['id'])).each do |line|
-                date2 = DateTime.parse(line['sent'])
-                userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
-                newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
-                if date1 < date2
-                  conversation['details_content'] << newline
+              if !date1.nil?
+                date1 = DateTime.parse(date1['lastUpdated'])
+                log "testbis"
+                JSON.parse(get_conversations(conversation['id'])).each do |line|
+                  date2 = DateTime.parse(line['sent'])
+                  userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
+                  newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
+                  if date1 < date2
+                    conversation['details_content'] << newline
+                  end
                 end
               end
             end
