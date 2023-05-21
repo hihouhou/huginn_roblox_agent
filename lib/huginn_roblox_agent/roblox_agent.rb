@@ -178,17 +178,18 @@ module Agents
         memory['friends'] = payload
       else
         if count != memory[:count] and count['count'] > memory['count']['count']
+          payload = get_friends_by_userid()
           if payload != memory['friends']
             if memory['friends'] == ''
             else
-              last_status = memory['last_status']
+              last_status = memory['friends']
               payload['data'].each do |friend|
                 found = false
                 if interpolated['debug'] == 'true'
                   log "friend"
                   log friend
                 end
-                last_status['friends']['data'].each do |friendbis|
+                last_status['data'].each do |friendbis|
                   if friend['id'] == friendbis['id']
                     found = true
                   end
@@ -204,6 +205,10 @@ module Agents
               end
             end
             memory['friends'] = payload
+          else
+            if interpolated['debug'] == 'true'
+              log "nothing to compare"
+            end
           end
           memory['count'] = count
         else
