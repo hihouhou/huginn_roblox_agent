@@ -265,7 +265,7 @@ module Agents
             log conversation
           end
           last_status.each do |conversationbis|
-            if conversation['id'] == conversationbis['id'] && conversation['lastUpdated'] == conversationbis['lastUpdated']
+            if conversation['id'] == conversationbis['id'] && DateTime.parse(conversation['lastUpdated']).strftime("%Y-%m-%dT%H:%M:%S") == DateTime.parse(conversationbis['lastUpdated']).strftime("%Y-%m-%dT%H:%M:%S")
               found = true
             end
             if interpolated['debug'] == 'true'
