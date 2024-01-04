@@ -166,57 +166,42 @@ module Agents
     end
 
     def check_friends()
-      count = get_friends_number()
-      if !memory['count']
-        payload = get_friends_by_userid()
+      payload = get_friends_by_userid()
+      payload_memory = payload.dup
+      if payload != memory['last_status']
         payload['data'].each do |friend|
-          if interpolated['emit_events'] == 'true'
+          found = false
+          if interpolated['debug'] == 'true'
+            log "friend"
+            log friend
+          end
+          if !memory['last_status'].nil? and memory['last_status'].present?
+            if interpolated['debug'] == 'true'
+              log "memory"
+              log memory['last_status']
+            end
+            last_status = memory['last_status']
+            last_status['data'].each do |friendbis|
+              if friend['id'] == friendbis['id']
+                found = true
+              end
+              if interpolated['debug'] == 'true'
+                log "friendbis"
+                log friendbis
+                log "found is #{found}!"
+              end
+            end
+          end
+          if found == false
             create_event payload: friend
           end
         end
-        memory['count'] = count
-        memory['friends'] = payload
       else
-        if count != memory[:count] and count['count'] > memory['count']['count']
-          payload = get_friends_by_userid()
-          if payload != memory['friends']
-            if memory['friends'] == ''
-            else
-              last_status = memory['friends']
-              payload['data'].each do |friend|
-                found = false
-                if interpolated['debug'] == 'true'
-                  log "friend"
-                  log friend
-                end
-                last_status['data'].each do |friendbis|
-                  if friend['id'] == friendbis['id']
-                    found = true
-                  end
-                  if interpolated['debug'] == 'true'
-                    log "friendbis"
-                    log friendbis
-                    log "found is #{found}!"
-                  end
-                end
-                if found == false
-                  create_event payload: friend
-                end
-              end
-            end
-            memory['friends'] = payload
-          else
-            if interpolated['debug'] == 'true'
-              log "nothing to compare"
-            end
-          end
-          memory['count'] = count
-        else
-          if interpolated['debug'] == 'true'
-            log "nothing to compare because same count"
-          end
+        if interpolated['debug'] == 'true'
+          log "nothing to compare"
         end
-      end  
+      end
+      memory['last_status'] = payload_memory
     end
 
     def get_conversations(id)
@@ -246,46 +231,35 @@ module Agents
       log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
-      if !memory['conversations']
-        payload.each do |conversation|
-          if interpolated['details'] == 'true'
-            conversation['details_content'] = []
-            JSON.parse(get_conversations(conversation['id'])).each do |line|
-              userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
-              newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
-              conversation['details_content'] << newline
-            end
-          end
-          if interpolated['emit_events'] == 'true'
-            create_event payload: conversation
-          end
-        end
-        memory['conversations'] = payload
-      else
-        last_status = memory['conversations']
+
+      if payload != memory['last_status']
         payload.each do |conversation|
           found = false
-          if interpolated['debug'] == 'true'
-            log "conversation"
-            log conversation
-          end
-          last_status.each do |conversationbis|
-            if conversation['id'] == conversationbis['id'] && DateTime.parse(conversation['lastUpdated']).strftime("%Y-%m-%dT%H:%M:%S") == DateTime.parse(conversationbis['lastUpdated']).strftime("%Y-%m-%dT%H:%M:%S")
-              found = true
-            end
+          if !memory['last_status'].nil? and memory['last_status'].present?
+            last_status = memory['last_status']
             if interpolated['debug'] == 'true'
-              log "conversationbis"
-              log conversationbis
-              log "found is #{found}!"
+              log "conversation"
+              log conversation
+            end
+            last_status.each do |conversationbis|
+              if conversation['id'] == conversationbis['id'] && DateTime.parse(conversation['lastUpdated']).strftime("%Y-%m-%dT%H:%M:%S") == DateTime.parse(conversationbis['lastUpdated']).strftime("%Y-%m-%dT%H:%M:%S")
+                found = true
+                if interpolated['debug'] == 'true'
+                  log "conversationbis"
+                  log conversationbis
+                  log "found is #{found}"
+                end
+              end
             end
           end
           if found == false
             if interpolated['details'] == 'true'
               conversation['details_content'] = []
-              date1 = last_status.find { |conversationter| conversationter["id"] == conversation['id'] }
+              if !memory['last_status'].nil? and memory['last_status'].present?
+                date1 = last_status.find { |conversationter| conversationter["id"] == conversation['id'] }
+              end
               if !date1.nil?
                 date1 = DateTime.parse(date1['lastUpdated'])
-                log "testbis"
                 JSON.parse(get_conversations(conversation['id'])).each do |line|
                   date2 = DateTime.parse(line['sent'])
                   userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
@@ -299,7 +273,11 @@ module Agents
             create_event payload: conversation
           end
         end
-        memory['conversations'] = payload
+        memory['last_status'] = payload
+      else
+        if interpolated['debug'] == 'true'
+          log "nothing to compare"
+        end
       end  
     end
 
