@@ -231,6 +231,7 @@ module Agents
       log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
+      payload_memory = payload.dup
 
       if payload != memory['last_status']
         payload.each do |conversation|
@@ -258,22 +259,25 @@ module Agents
               if !memory['last_status'].nil? and memory['last_status'].present?
                 date1 = last_status.find { |conversationter| conversationter["id"] == conversation['id'] }
               end
-              if !date1.nil?
+              if date1
                 date1 = DateTime.parse(date1['lastUpdated'])
-                JSON.parse(get_conversations(conversation['id'])).each do |line|
-                  date2 = DateTime.parse(line['sent'])
-                  userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
-                  newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
-                  if date1 < date2
-                    conversation['details_content'] << newline
-                  end
+              else
+                date1 = DateTime.now - 1
+              end
+              JSON.parse(get_conversations(conversation['id'])).reverse.each do |line|
+                log line
+                date2 = DateTime.parse(line['sent'])
+                userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
+                newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
+                if date1 < date2
+                  conversation['details_content'] << newline
                 end
               end
             end
             create_event payload: conversation
           end
         end
-        memory['last_status'] = payload
+        memory['last_status'] = payload_memory
       else
         if interpolated['debug'] == 'true'
           log "nothing to compare"
