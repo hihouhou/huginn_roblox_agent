@@ -268,6 +268,10 @@ module Agents
                 log line
                 date2 = DateTime.parse(line['sent'])
                 userid = conversation['participants'].find { |p| p['targetId'] == line['senderTargetId'] }
+                if userid.nil?
+                  userid = {}
+                  userid['name'] = "unknown"
+                end
                 newline = "#{line['sent']} #{userid['name']} : #{line['content']}"
                 if date1 < date2
                   conversation['details_content'] << newline
